@@ -71,6 +71,8 @@ import org.osgi.util.tracker.ServiceTracker;
 
 import com.google.common.base.Throwables;
 
+import ch.epfl.scala.bsp4j.BuildServer;
+
 public class JavaLanguageServerPlugin extends Plugin {
 
 	private static final String JDT_UI_PLUGIN = "org.eclipse.jdt.ui";
@@ -126,6 +128,9 @@ public class JavaLanguageServerPlugin extends Plugin {
 
 	private ExecutorService executorService;
 	private CompletionContributionService completionContributionService;
+
+	// TODO: where should the build server be placed? singleton?
+	private BuildServer buildServer;
 
 	public static LanguageServerApplication getLanguageServer() {
 		return pluginInstance == null ? null : pluginInstance.languageServer;
@@ -459,6 +464,41 @@ public class JavaLanguageServerPlugin extends Plugin {
 			return JavaLanguageServerPlugin.pluginInstance.preferenceManager;
 		}
 		return null;
+	}
+
+	public static BuildServer getBuildServer() {
+		if (pluginInstance.buildServer == null) {
+			String[] classpaths = new String[]{
+				"C:\\Users\\sheche\\Documents\\work\\vscode-java\\build-server-for-java\\server\\build\\libs\\all-in-one-jar.jar"
+			};
+			ProcessBuilder build = new ProcessBuilder(
+				"C:\\Program Files\\Eclipse Foundation\\jdk-17.0.0.35-hotspot\\bin\\java.exe",
+				"-cp",
+				String.join(";", classpaths),
+				"bsp.server.JavaBspLauncher"
+			);
+
+			try {
+				Process process = build.start();
+				ExecutorService fixedThreadPool = Executors.newFixedThreadPool(1);
+				BspClient client = new BspClient();
+				Launcher<BuildServer> launcher = new Launcher.Builder<BuildServer>()
+				.setOutput(process.getOutputStream())
+				.setInput(process.getInputStream())
+				.setLocalService(client)
+				.setExecutorService(fixedThreadPool)
+				.setRemoteInterface(BuildServer.class)
+				.create();
+
+				launcher.startListening();
+				pluginInstance.buildServer = launcher.getRemoteProxy();
+				client.onConnectWithServer(pluginInstance.buildServer);
+			} catch (IOException e) {
+				return null;
+			}
+			
+		}
+		return pluginInstance.buildServer;
 	}
 
 	public void unregisterCapability(String id, String method) {

@@ -131,6 +131,10 @@
             order ="300"
             class = "org.eclipse.jdt.ls.core.internal.managers.GradleProjectImporter"/>
          <importer
+            id = "bspGradleProjectImporter"
+            order ="350"
+            class = "org.eclipse.jdt.ls.core.internal.managers.BspGradleProjectImporter"/>
+         <importer
             id = "mavenProjectImporter"
             order = "400"
             class = "org.eclipse.jdt.ls.core.internal.managers.MavenProjectImporter"/>
@@ -150,6 +154,10 @@
          	id="gradleBuildSupport"
          	order="300"
          	class="org.eclipse.jdt.ls.core.internal.managers.GradleBuildSupport" />
+         <buildSupport
+         	id="bspGradleBuildSupport"
+         	order="350"
+         	class="org.eclipse.jdt.ls.core.internal.managers.BspGradleBuildSupport" />
          <buildSupport
          	id="mavenBuildSupport"
          	order="400"
@@ -204,4 +212,23 @@
          id="org.eclipse.jdt.core.javanature">
       </requires-nature>
    </extension>
+   <extension
+      id="org.eclipse.jdt.ls.bspGradleProject"
+      name="BSP Gradle Project"
+      point="org.eclipse.core.resources.natures">
+      <runtime>
+         <run
+            class="org.eclipse.jdt.ls.core.internal.managers.BspGradleProjectNature">
+         </run>
+      </runtime>
+   </extension>
+   <extension 
+	point="org.eclipse.core.resources.builders" 
+	id="org.eclipse.jdt.ls.core.internal.builder.bspBuilder"
+	name="bspBuilder">
+	<builder>
+		<run class="org.eclipse.jdt.ls.core.internal.builder.BspBuilder">
+		</run>
+	</builder>
+</extension>
 </plugin>

@@ -132,63 +132,14 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 	 */
 	@Override
 	public boolean applies(IProgressMonitor monitor) throws CoreException {
-		if (rootFolder == null) {
-			return false;
-		}
-		Preferences preferences = getPreferences();
-		if (!preferences.isImportGradleEnabled()) {
-			return false;
-		}
-		if (directories == null) {
-			BasicFileDetector gradleDetector = new BasicFileDetector(rootFolder.toPath(), BUILD_GRADLE_DESCRIPTOR,
-					SETTINGS_GRADLE_DESCRIPTOR, BUILD_GRADLE_KTS_DESCRIPTOR, SETTINGS_GRADLE_KTS_DESCRIPTOR)
-					.includeNested(false)
-					.addExclusions("**/build")//default gradle build dir
-					.addExclusions("**/bin");
-			for (IProject project : ProjectUtils.getAllProjects()) {
-				if (!ProjectUtils.isGradleProject(project)) {
-					String path = project.getLocation().toOSString();
-					gradleDetector.addExclusions(path);
-				}
-			}
-			directories = gradleDetector.scan(monitor);
-		}
-		return !directories.isEmpty();
+		// TODO: should check according to settings
+		return false;
 	}
 
 	@Override
 	public boolean applies(Collection<IPath> buildFiles, IProgressMonitor monitor) {
-		if (!getPreferences().isImportGradleEnabled()) {
-			return false;
-		}
-
-		Collection<Path> configurationDirs = findProjectPathByConfigurationName(buildFiles, Arrays.asList(
-			BUILD_GRADLE_DESCRIPTOR,
-			SETTINGS_GRADLE_DESCRIPTOR,
-			BUILD_GRADLE_KTS_DESCRIPTOR,
-			SETTINGS_GRADLE_KTS_DESCRIPTOR
-		), false /*includeNested*/);
-		if (configurationDirs == null || configurationDirs.isEmpty()) {
-			return false;
-		}
-
-		Set<Path> noneGradleProjectPaths = new HashSet<>();
-		for (IProject project : ProjectUtils.getAllProjects()) {
-			if (!ProjectUtils.isGradleProject(project)) {
-				noneGradleProjectPaths.add(project.getLocation().toFile().toPath());
-			}
-		}
-
-		this.directories = configurationDirs.stream()
-			.filter(d -> {
-				boolean folderIsImported = noneGradleProjectPaths.stream().anyMatch(path -> {
-					return path.compareTo(d) == 0;
-				});
-				return !folderIsImported;
-			})
-			.collect(Collectors.toList());
-
-		return !this.directories.isEmpty();
+		// TODO: should check according to settings
+		return false;
 	}
 
 	/* (non-Javadoc)

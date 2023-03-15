@@ -3,6 +3,44 @@
 	"configurations": [
 		{
 			"type": "java",
+			"name": "jdt.ls.socket-stream.launch",
+			"request": "launch",
+			"mainClass": "org.eclipse.equinox.launcher.Main",
+			"projectName": "org.eclipse.jdt.ls.core",
+			"classPaths": [
+				"C:\\Users\\sheche\\AppData\\Roaming\\Code\\User\\workspaceStorage\\13e856fe747f22ede21d985fb23f5c11\\redhat.java\\jdt_ws\\.metadata\\.plugins\\org.eclipse.pde.core\\.bundle_pool\\plugins\\org.eclipse.equinox.launcher_1.6.400.v20210924-0641.jar"
+			],
+			"args": [
+				"-application",
+				"org.eclipse.jdt.ls.core.id1",
+				"-data",
+				"C:\\Users\\sheche\\AppData\\Roaming\\Code\\User\\workspaceStorage\\13e856fe747f22ede21d985fb23f5c11\\redhat.java\\jdt_ws/../runtime-JDT-LS",
+				"-configuration",
+				"file:C:/Users/sheche/AppData/Roaming/Code/User/workspaceStorage/13e856fe747f22ede21d985fb23f5c11/redhat.java/jdt_ws/.metadata/.plugins/org.eclipse.pde.core/jdt.ls.socket-stream/",
+				"-dev",
+				"file:C:/Users/sheche/AppData/Roaming/Code/User/workspaceStorage/13e856fe747f22ede21d985fb23f5c11/redhat.java/jdt_ws/.metadata/.plugins/org.eclipse.pde.core/jdt.ls.socket-stream/dev.properties",
+				"-os",
+				"win32",
+				"-ws",
+				"win32",
+				"-arch",
+				"x86_64",
+				"-nl",
+				"en_US",
+				"-consoleLog"
+			],
+			"vmArgs": [
+				"-Djava.import.generatesMetadataFilesAtProjectRoot=true",
+				"-Declipse.pde.launch=true"
+			],
+			"env": {
+				"CLIENT_HOST": "127.0.0.1",
+				"socket.stream.debug": "true",
+				"CLIENT_PORT": "5036"
+			}
+		},
+		{
+			"type": "java",
 			"name": "Attach to JDT-LS (Standard)",
 			"request": "attach",
 			"hostName": "localhost",
