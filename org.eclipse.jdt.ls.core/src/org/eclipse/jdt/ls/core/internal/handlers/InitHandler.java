@@ -68,6 +68,7 @@ import org.osgi.framework.BundleException;
 import ch.epfl.scala.bsp4j.BuildClientCapabilities;
 import ch.epfl.scala.bsp4j.BuildServer;
 import ch.epfl.scala.bsp4j.InitializeBuildParams;
+import ch.epfl.scala.bsp4j.InitializeBuildResult;
 
 /**
  * Handler for the VS Code extension initialization
@@ -248,13 +249,13 @@ final public class InitHandler extends BaseInitHandler {
 					JavaLanguageServerPlugin.logInfo("RepositoryRegistryUpdateJob finished " + (System.currentTimeMillis() - start) + "ms");
 					resetBuildState = ProjectsManager.interruptAutoBuild();
 					BuildServer buildServer = JavaLanguageServerPlugin.getBuildServer();
-					buildServer.buildInitialize(new InitializeBuildParams(
-						"client",
-						"1.0.0",
-						"2.1.0-M4",
-						roots.toArray(IPath[]::new)[0].toFile().toPath().toUri().toString(),
-						new BuildClientCapabilities(java.util.Collections.singletonList("java"))
-					)).join();
+					InitializeBuildResult res = buildServer.buildInitialize(new InitializeBuildParams(
+							"client",
+							"1.0.0",
+							"2.1.0-M4",
+							roots.toArray(IPath[]::new)[0].toFile().toPath().toUri().toString(),
+							new BuildClientCapabilities(java.util.Collections.singletonList("java"))
+						)).join();
 					buildServer.onBuildInitialized();
 					projectsManager.initializeProjects(roots, subMonitor);
 					projectsManager.configureFilters(monitor);

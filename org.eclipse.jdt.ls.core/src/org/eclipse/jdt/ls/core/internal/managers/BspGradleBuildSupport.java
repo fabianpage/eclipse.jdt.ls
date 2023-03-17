@@ -51,8 +51,11 @@ import ch.epfl.scala.bsp4j.DependencyModulesParams;
 import ch.epfl.scala.bsp4j.DependencyModulesResult;
 import ch.epfl.scala.bsp4j.MavenDependencyModule;
 import ch.epfl.scala.bsp4j.MavenDependencyModuleArtifact;
+import ch.epfl.scala.bsp4j.OutputPathItem;
 import ch.epfl.scala.bsp4j.OutputPathsParams;
 import ch.epfl.scala.bsp4j.OutputPathsResult;
+import ch.epfl.scala.bsp4j.ResourcesParams;
+import ch.epfl.scala.bsp4j.ResourcesResult;
 import ch.epfl.scala.bsp4j.SourceItem;
 import ch.epfl.scala.bsp4j.SourcesParams;
 import ch.epfl.scala.bsp4j.SourcesResult;
@@ -115,15 +118,18 @@ public class BspGradleBuildSupport implements IBuildSupport {
 			boolean isTest = buildTarget.getTags().contains("test");
 
 			OutputPathsResult outputResult = buildServer.buildTargetOutputPaths(new OutputPathsParams(Arrays.asList(buildTarget.getId()))).join();
-			// TODO: assume only one output path?
-			String outputUriString = outputResult.getItems().get(0).getOutputPaths().get(0).getUri();
-			IPath outputPath = ResourceUtils.filePathFromURI(outputUriString);
-			IPath relativeOutputPath = outputPath.makeRelativeTo(project.getLocation());
-			IPath outputFullPath = project.getFolder(relativeOutputPath).getFullPath();
+			List<OutputPathItem> outputPaths = outputResult.getItems().get(0).getOutputPaths();
+			String sourceOutputUriString = outputPaths.get(0).getUri();
+			IPath sourceOutputPath = ResourceUtils.filePathFromURI(sourceOutputUriString);
+			IPath relativeSourceOutputPath = sourceOutputPath.makeRelativeTo(project.getLocation());
+			IPath sourceOutputFullPath = project.getFolder(relativeSourceOutputPath).getFullPath();
 
 			SourcesResult sourcesResult = buildServer.buildTargetSources(new SourcesParams(Arrays.asList(buildTarget.getId()))).join();
 			for (SourceItem source : sourcesResult.getItems().get(0).getSources()) {
 				IPath sourcePath = ResourceUtils.filePathFromURI(source.getUri());
+				if (!sourcePath.toFile().exists()) {
+					continue;
+				}
 				IPath relativeSourcePath = sourcePath.makeRelativeTo(project.getLocation());
 				IPath sourceFullPath = project.getFolder(relativeSourcePath).getFullPath();
 				List<IClasspathAttribute> classpathAttributes = new LinkedList<>();
@@ -133,9 +139,29 @@ public class BspGradleBuildSupport implements IBuildSupport {
 				if (source.getGenerated()) {
 					classpathAttributes.add(optionalAttribute);
 				}
-				classpath.add(JavaCore.newSourceEntry(sourceFullPath, null, null, outputFullPath, classpathAttributes.toArray(new IClasspathAttribute[0])));
+				classpath.add(JavaCore.newSourceEntry(sourceFullPath, null, null, sourceOutputFullPath, classpathAttributes.toArray(new IClasspathAttribute[0])));
 			}
-			// TODO: handle resource?
+
+			if (outputPaths.size() > 1) {
+				// handle resource output
+				String resourceOutputUriString = outputResult.getItems().get(0).getOutputPaths().get(1).getUri();
+				IPath resourceOutputPath = ResourceUtils.filePathFromURI(resourceOutputUriString);
+				IPath relativeResourceOutputPath = resourceOutputPath.makeRelativeTo(project.getLocation());
+				IPath resourceOutputFullPath = project.getFolder(relativeResourceOutputPath).getFullPath();
+
+				ResourcesResult resourcesResult = buildServer.buildTargetResources(new ResourcesParams(Arrays.asList(buildTarget.getId()))).join();
+				for (String resourceUri : resourcesResult.getItems().get(0).getResources()) {
+					IPath resourcePath = ResourceUtils.filePathFromURI(resourceUri);
+					IPath relativeResourcePath = resourcePath.makeRelativeTo(project.getLocation());
+					IPath resourceFullPath = project.getFolder(relativeResourcePath).getFullPath();
+					List<IClasspathAttribute> classpathAttributes = new LinkedList<>();
+					if (isTest) {
+						classpathAttributes.add(testAttribute);
+					}
+					classpathAttributes.add(optionalAttribute);
+					classpath.add(JavaCore.newSourceEntry(resourceFullPath, null, null, resourceOutputFullPath, classpathAttributes.toArray(new IClasspathAttribute[0])));
+				}
+			}
 
 			DependencyModulesResult dependencyModuleResult = buildServer.buildTargetDependencyModules(new DependencyModulesParams(Arrays.asList(buildTarget.getId()))).join();
 			for (DependencyModule module : dependencyModuleResult.getItems().get(0).getModules()) {

@@ -18,7 +18,7 @@
  import org.eclipse.core.runtime.CoreException;
  
  public class BspGradleProjectNature implements IProjectNature  {
-     public static final String NATURE_ID = "org.eclipse.jdt.ls.BspGradleProjectNature";
+     public static final String NATURE_ID = "org.eclipse.jdt.ls.bspGradleProjectNature";
  
      private IProject project;
  

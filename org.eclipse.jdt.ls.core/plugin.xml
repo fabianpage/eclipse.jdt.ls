@@ -213,7 +213,7 @@
       </requires-nature>
    </extension>
    <extension
-      id="org.eclipse.jdt.ls.bspGradleProject"
+      id="org.eclipse.jdt.ls.bspGradleProjectNature"
       name="BSP Gradle Project"
       point="org.eclipse.core.resources.natures">
       <runtime>

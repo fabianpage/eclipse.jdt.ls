@@ -63,10 +63,10 @@ public class BspGradleProjectImporter extends AbstractProjectImporter {
 		if (rootFolder == null) {
 			return false;
 		}
-		Preferences preferences = getPreferences();
-		if (!preferences.isImportGradleEnabled()) {
-			return false;
-		}
+		// Preferences preferences = getPreferences();
+		// if (!preferences.isImportGradleEnabled()) {
+		// 	return false;
+		// }
 		if (directories == null) {
 			BasicFileDetector gradleDetector = new BasicFileDetector(rootFolder.toPath(), BUILD_GRADLE_DESCRIPTOR,
 					SETTINGS_GRADLE_DESCRIPTOR, BUILD_GRADLE_KTS_DESCRIPTOR, SETTINGS_GRADLE_KTS_DESCRIPTOR)
@@ -168,13 +168,19 @@ public class BspGradleProjectImporter extends AbstractProjectImporter {
 		// TODO: build targets may have multiple projects, need to distinguish them.
 		File projectDirectory;
 		try {
-			URI uri = new URI(buildTargets.get(0).getId().getUri());
-			URI normalizedUri = new URI(uri.getScheme(),
-				uri.getAuthority(),
-				uri.getPath(),
-				null, // Ignore the query part of the input url
-				uri.getFragment());
-			projectDirectory = new File(normalizedUri);
+			String uriString = buildTargets.get(0).getBaseDirectory();
+			if (uriString == null) {
+				uriString = buildTargets.get(0).getId().getUri();
+			}
+			URI uri = new URI(uriString);
+			if (uri.getQuery() != null) {
+				uri = new URI(uri.getScheme(),
+					uri.getAuthority(),
+					uri.getPath(),
+					null, // Ignore the query part of the input url
+					uri.getFragment());
+			}
+			projectDirectory = new File(uri);
 		} catch (URISyntaxException e) {
 			// TODO: handle exception
 			return null;
