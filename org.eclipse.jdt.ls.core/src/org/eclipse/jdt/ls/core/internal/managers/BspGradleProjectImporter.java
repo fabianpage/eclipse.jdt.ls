@@ -19,7 +19,9 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -37,8 +39,6 @@ import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.ls.core.internal.AbstractProjectImporter;
 import org.eclipse.jdt.ls.core.internal.JavaLanguageServerPlugin;
 import org.eclipse.jdt.ls.core.internal.ProjectUtils;
-import org.eclipse.jdt.ls.core.internal.preferences.Preferences;
-
 import ch.epfl.scala.bsp4j.BuildServer;
 import ch.epfl.scala.bsp4j.BuildTarget;
 import ch.epfl.scala.bsp4j.WorkspaceBuildTargetsResult;
@@ -131,12 +131,10 @@ public class BspGradleProjectImporter extends AbstractProjectImporter {
 		WorkspaceBuildTargetsResult workspaceBuildTargetsResult = buildServer.workspaceBuildTargets().join();
 		List<BuildTarget> buildTargets = workspaceBuildTargetsResult.getTargets();
 
-		IProject project = createProjectIfNotExist(buildTargets, monitor);
-		if (project == null) {
+		List<IProject> projects = createProjectsIfNotExist(buildTargets, monitor);
+		if (projects.isEmpty()) {
 			return;
 		}
-
-		BuildTargetsManager.getInstance().setBuildTargets(project, buildTargets);
 
 		// store the digest for the imported gradle projects.
 		ProjectUtils.getGradleProjects().forEach(p -> {
@@ -161,63 +159,69 @@ public class BspGradleProjectImporter extends AbstractProjectImporter {
 		});
 
 		BspGradleBuildSupport bs = new BspGradleBuildSupport();
-		bs.updateClassPath(buildServer, project, monitor);
+		for (IProject project : projects) {
+			bs.updateClassPath(project, monitor);
+		}
 	}
 
-	private IProject createProjectIfNotExist(List<BuildTarget> buildTargets, IProgressMonitor monitor) throws CoreException {
-		// TODO: build targets may have multiple projects, need to distinguish them.
-		File projectDirectory;
-		try {
-			String uriString = buildTargets.get(0).getBaseDirectory();
-			if (uriString == null) {
-				uriString = buildTargets.get(0).getId().getUri();
+	private List<IProject> createProjectsIfNotExist(List<BuildTarget> buildTargets, IProgressMonitor monitor) throws CoreException {
+		List<IProject> projects = new LinkedList<>();
+		Map<String, List<BuildTarget>> buildTargetMap = mapBuildTargetsByBaseDir(buildTargets);
+		for (String baseDir : buildTargetMap.keySet()) {
+			if (baseDir == null) {
+				JavaLanguageServerPlugin.logError("The base directory of the build target is null.");
+				continue;
 			}
-			URI uri = new URI(uriString);
-			if (uri.getQuery() != null) {
-				uri = new URI(uri.getScheme(),
-					uri.getAuthority(),
-					uri.getPath(),
-					null, // Ignore the query part of the input url
-					uri.getFragment());
+			File projectDirectory;
+			try {
+				projectDirectory = new File(new URI(baseDir));
+			} catch (URISyntaxException e) {
+				JavaLanguageServerPlugin.logException(e);
+				continue;
 			}
-			projectDirectory = new File(uri);
-		} catch (URISyntaxException e) {
-			// TODO: handle exception
-			return null;
+			IProject[] allProjects = ProjectUtils.getAllProjects();
+			Optional<IProject> projectOrNull = Arrays.stream(allProjects).filter(p -> {
+				File loc = p.getLocation().toFile();
+				return loc.equals(projectDirectory);
+			}).findFirst();
+
+			IProject project;
+			if (projectOrNull.isPresent()) {
+				project = projectOrNull.get();
+			} else {
+				String projectName = projectDirectory.getName();
+				IWorkspace workspace = ResourcesPlugin.getWorkspace();
+				IProjectDescription projectDescription = workspace.newProjectDescription(projectName);
+				projectDescription.setLocation(org.eclipse.core.runtime.Path.fromOSString(projectDirectory.getPath()));
+				projectDescription.setNatureIds(new String[]{JavaCore.NATURE_ID, BspGradleProjectNature.NATURE_ID});
+				ICommand buildSpec = projectDescription.newCommand();
+				buildSpec.setBuilderName("org.eclipse.jdt.ls.core.internal.builder.bspBuilder");
+				projectDescription.setBuildSpec(new ICommand[]{buildSpec});
+
+				project = workspace.getRoot().getProject(projectName);
+				project.create(projectDescription, monitor);
+
+				// open the project
+				project.open(IResource.NONE, monitor);
+
+			}
+
+			if (project == null || !project.isAccessible()) {
+				continue;
+			}
+
+			project.refreshLocal(IResource.DEPTH_INFINITE, monitor);
+			projects.add(project);
+			List<BuildTarget> targets = buildTargetMap.get(baseDir);
+			BuildTargetsManager.getInstance().setBuildTargets(project, targets);
 		}
-		IProject[] allProjects = ProjectUtils.getAllProjects();
-		Optional<IProject> projectOrNull = Arrays.stream(allProjects).filter(p -> {
-			File loc = p.getLocation().toFile();
-			return loc.equals(projectDirectory);
-		}).findFirst();
+		
+		return projects;
+	}
 
-		IProject project;
-		if (projectOrNull.isPresent()) {
-			project = projectOrNull.get();
-		} else {
-            String projectName = projectDirectory.getName();
-			IWorkspace workspace = ResourcesPlugin.getWorkspace();
-			IProjectDescription projectDescription = workspace.newProjectDescription(projectName);
-			projectDescription.setLocation(org.eclipse.core.runtime.Path.fromOSString(projectDirectory.getPath()));
-			projectDescription.setNatureIds(new String[]{JavaCore.NATURE_ID, BspGradleProjectNature.NATURE_ID});
-			ICommand buildSpec = projectDescription.newCommand();
-			buildSpec.setBuilderName("org.eclipse.jdt.ls.core.internal.builder.bspBuilder");
-			projectDescription.setBuildSpec(new ICommand[]{buildSpec});
-
-			project = workspace.getRoot().getProject(projectName);
-            project.create(projectDescription, monitor);
-
-            // open the project
-            project.open(IResource.NONE, monitor);
-
-        }
-
-		if (project == null || !project.isAccessible()) {
-			return null;
-		}
-
-		project.refreshLocal(IResource.DEPTH_INFINITE, monitor);
-		return project;
+	Map<String, List<BuildTarget>> mapBuildTargetsByBaseDir(List<BuildTarget> buildTargets) {
+		// we assume all build targets will have a non-null base directory.
+		return buildTargets.stream().collect(Collectors.groupingBy(BuildTarget::getBaseDirectory));
 	}
 
 	@Override

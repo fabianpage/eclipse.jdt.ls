@@ -98,13 +98,17 @@ public class BspGradleBuildSupport implements IBuildSupport {
 			buildServer.workspaceReload().join();
 			WorkspaceBuildTargetsResult workspaceBuildTargetsResult = buildServer.workspaceBuildTargets().join();
 			List<BuildTarget> buildTargets = workspaceBuildTargetsResult.getTargets();
-			// TODO: refactor: map project to build target
 			BuildTargetsManager.getInstance().setBuildTargets(project, buildTargets);
-			updateClassPath(buildServer, project, monitor);
+			updateClassPath(project, monitor);
 		}
 	}
 
-	public void updateClassPath(BuildServer buildServer, IProject project, IProgressMonitor monitor) throws JavaModelException {
+	public void updateClassPath(IProject project, IProgressMonitor monitor) throws JavaModelException {
+		BuildServer buildServer = JavaLanguageServerPlugin.getBuildServer();
+		if (buildServer == null) {
+			return;
+		}
+
 		IJavaProject javaProject = JavaCore.create(project);
 		List<IClasspathEntry> classpath = new LinkedList<>();
 
@@ -175,9 +179,8 @@ public class BspGradleBuildSupport implements IBuildSupport {
 		}
 
 		JvmBuildTargetExt jvmBuildTarget = JSONUtility.toModel(buildTargets.get(0).getData(), JvmBuildTargetExt.class);
-		// TODO: the version might not be eclipse compatible
-		// see: https://github.com/eclipse/buildship/blob/6727c8779029e86b0585e27784ca90b904b7ce35/org.eclipse.buildship.core/src/main/java/org/eclipse/buildship/core/internal/util/gradle/JavaVersionUtil.java#L24
-		IVMInstall vm = EclipseVmUtil.findOrRegisterStandardVM(jvmBuildTarget.getTargetBytecodeVersion(), new File(jvmBuildTarget.getJavaHome()));
+		String javaVersion = getEclipseCompatibleVersion(jvmBuildTarget.getTargetBytecodeVersion());
+		IVMInstall vm = EclipseVmUtil.findOrRegisterStandardVM(javaVersion, new File(jvmBuildTarget.getJavaHome()));
 		classpath.add(JavaCore.newContainerEntry(JavaRuntime.newJREContainerPath(vm)));
 
 		testDependencies = testDependencies.stream().filter(t -> {
@@ -264,5 +267,23 @@ public class BspGradleBuildSupport implements IBuildSupport {
 	@Override
 	public boolean isBuildLikeFileName(String fileName) {
 		return GRADLE_FILE_EXT.matcher(fileName).matches() || fileName.equals(GRADLE_PROPERTIES);
+	}
+
+	/**
+	 * Get the Eclipse compatible Java version string.
+	 * <pre>
+	 * See: <a href="https://github.com/eclipse/buildship/blob/6727c8779029e86b0585e27784ca90b904b7ce35/
+	   org.eclipse.buildship.core/src/main/java/org/eclipse/buildship/core/internal/util/gradle/JavaVersionUtil.java#L24">
+	   org.eclipse.buildship.core.internal.util.gradle.JavaVersionUtil</a>
+	 * </pre>
+	 */
+	String getEclipseCompatibleVersion(String javaVersion) {
+		if ("1.9".equals(javaVersion)) {
+			return "9";
+		} else if ("1.10".equals(javaVersion)) {
+			return "10";
+		}
+
+		return javaVersion;
 	}
 }
