@@ -46,6 +46,7 @@ import org.eclipse.jdt.ls.core.internal.managers.ProjectsManager.CHANGE_TYPE;
 
 import ch.epfl.scala.bsp4j.BuildServer;
 import ch.epfl.scala.bsp4j.BuildTarget;
+import ch.epfl.scala.bsp4j.BuildTargetIdentifier;
 import ch.epfl.scala.bsp4j.DependencyModule;
 import ch.epfl.scala.bsp4j.DependencyModulesParams;
 import ch.epfl.scala.bsp4j.DependencyModulesResult;
@@ -69,6 +70,9 @@ public class BspGradleBuildSupport implements IBuildSupport {
 
 	public static final Pattern GRADLE_FILE_EXT = Pattern.compile("^.*\\.gradle(\\.kts)?$");
 	public static final String GRADLE_PROPERTIES = "gradle.properties";
+
+	private static final IClasspathAttribute testAttribute = JavaCore.newClasspathAttribute(IClasspathAttribute.TEST, "true");
+	private static final IClasspathAttribute optionalAttribute = JavaCore.newClasspathAttribute(IClasspathAttribute.OPTIONAL, "true");
 
 	@Override
 	public boolean applies(IProject project) {
@@ -114,10 +118,9 @@ public class BspGradleBuildSupport implements IBuildSupport {
 
 		Set<MavenDependencyModule> mainDependencies = new HashSet<>();
 		Set<MavenDependencyModule> testDependencies = new HashSet<>();
-		IClasspathAttribute testAttribute = JavaCore.newClasspathAttribute(IClasspathAttribute.TEST, "true");
-		IClasspathAttribute optionalAttribute = JavaCore.newClasspathAttribute(IClasspathAttribute.OPTIONAL, "true");
 
 		List<BuildTarget> buildTargets = BuildTargetsManager.getInstance().getBuildTargets(project);
+		Set<BuildTargetIdentifier> projectDependencies = new HashSet<>();
 		for (BuildTarget buildTarget : buildTargets) {
 			boolean isTest = buildTarget.getTags().contains("test");
 
@@ -156,6 +159,9 @@ public class BspGradleBuildSupport implements IBuildSupport {
 				ResourcesResult resourcesResult = buildServer.buildTargetResources(new ResourcesParams(Arrays.asList(buildTarget.getId()))).join();
 				for (String resourceUri : resourcesResult.getItems().get(0).getResources()) {
 					IPath resourcePath = ResourceUtils.filePathFromURI(resourceUri);
+					if (!resourcePath.toFile().exists()) {
+						continue;
+					}
 					IPath relativeResourcePath = resourcePath.makeRelativeTo(project.getLocation());
 					IPath resourceFullPath = project.getFolder(relativeResourcePath).getFullPath();
 					List<IClasspathAttribute> classpathAttributes = new LinkedList<>();
@@ -176,6 +182,8 @@ public class BspGradleBuildSupport implements IBuildSupport {
 					mainDependencies.add(mavenModule);
 				}
 			}
+
+			projectDependencies.addAll(buildTarget.getDependencies());
 		}
 
 		JvmBuildTargetExt jvmBuildTarget = JSONUtility.toModel(buildTargets.get(0).getData(), JvmBuildTargetExt.class);
@@ -187,54 +195,10 @@ public class BspGradleBuildSupport implements IBuildSupport {
 			return !mainDependencies.contains(t);
 		}).collect(Collectors.toSet());
 
-		for (MavenDependencyModule mainDependency : mainDependencies) {
-			File artifact = null;
-			File sourceArtifact = null;
-			for (MavenDependencyModuleArtifact a : mainDependency.getArtifacts()) {
-				try {
-					if (a.getClassifier() == null) {
-							artifact = new File(new URI(a.getUri()));
-					} else if ("sources".equals(a.getClassifier())) {
-						sourceArtifact = new File(new URI(a.getUri()));
-					}
-				} catch (URISyntaxException e) {
-					e.printStackTrace();
-				}
-			}
-			classpath.add(JavaCore.newLibraryEntry(
-				new org.eclipse.core.runtime.Path(artifact.getAbsolutePath()),
-				sourceArtifact == null ? null : new org.eclipse.core.runtime.Path(sourceArtifact.getAbsolutePath()),
-				null,
-				ClasspathEntry.NO_ACCESS_RULES,
-				ClasspathEntry.NO_EXTRA_ATTRIBUTES,
-				false
-			));
-		}
+		addProjectDependenciesToClasspath(classpath, projectDependencies);
+		addModeDependenciesToClasspath(classpath, mainDependencies, false);
+		addModeDependenciesToClasspath(classpath, testDependencies, true);
 
-		for (MavenDependencyModule testDependency : testDependencies) {
-			// TODO: refactor duplicated logic
-			File artifact = null;
-			File sourceArtifact = null;
-			for (MavenDependencyModuleArtifact a : testDependency.getArtifacts()) {
-				try {
-					if (a.getClassifier() == null) {
-							artifact = new File(new URI(a.getUri()));
-					} else if ("sources".equals(a.getClassifier())) {
-						sourceArtifact = new File(new URI(a.getUri()));
-					}
-				} catch (URISyntaxException e) {
-					e.printStackTrace();
-				}
-			}
-			classpath.add(JavaCore.newLibraryEntry(
-				new org.eclipse.core.runtime.Path(artifact.getAbsolutePath()),
-				sourceArtifact == null ? null : new org.eclipse.core.runtime.Path(sourceArtifact.getAbsolutePath()),
-				null,
-				ClasspathEntry.NO_ACCESS_RULES,
-				new IClasspathAttribute[]{ testAttribute },
-				false
-			));
-		}
 		javaProject.setRawClasspath(classpath.toArray(IClasspathEntry[]::new), javaProject.getOutputLocation(), monitor);
 	}
 
@@ -285,5 +249,51 @@ public class BspGradleBuildSupport implements IBuildSupport {
 		}
 
 		return javaVersion;
+	}
+
+	private void addProjectDependenciesToClasspath(List<IClasspathEntry> classpath, Set<BuildTargetIdentifier> projectDependencies) {
+		for (BuildTargetIdentifier dependency : projectDependencies) {
+			String uriString = dependency.getUri();
+			URI uri = null;
+			// TODO: extract to util
+			try {
+				uri = new URI(uriString);
+				uri = new URI(uri.getScheme(), uri.getHost(), uri.getPath(), null, uri.getFragment());
+			} catch (URISyntaxException e) {
+				e.printStackTrace();
+			}
+			if (uri != null) {
+				IProject dependencyProject = ProjectUtils.getProjectFromUri(uri.toString());
+				if (dependencyProject != null) {
+					classpath.add(JavaCore.newProjectEntry(dependencyProject.getFullPath()));
+				}
+			}
+		}
+	}
+
+	private void addModeDependenciesToClasspath(List<IClasspathEntry> classpath, Set<MavenDependencyModule> modules, boolean isTest) {
+		for (MavenDependencyModule mainDependency : modules) {
+			File artifact = null;
+			File sourceArtifact = null;
+			for (MavenDependencyModuleArtifact a : mainDependency.getArtifacts()) {
+				try {
+					if (a.getClassifier() == null) {
+							artifact = new File(new URI(a.getUri()));
+					} else if ("sources".equals(a.getClassifier())) {
+						sourceArtifact = new File(new URI(a.getUri()));
+					}
+				} catch (URISyntaxException e) {
+					e.printStackTrace();
+				}
+			}
+			classpath.add(JavaCore.newLibraryEntry(
+				new org.eclipse.core.runtime.Path(artifact.getAbsolutePath()),
+				sourceArtifact == null ? null : new org.eclipse.core.runtime.Path(sourceArtifact.getAbsolutePath()),
+				null,
+				ClasspathEntry.NO_ACCESS_RULES,
+				isTest ? new IClasspathAttribute[]{ testAttribute } : ClasspathEntry.NO_EXTRA_ATTRIBUTES,
+				false
+			));
+		}
 	}
 }
